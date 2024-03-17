@@ -3,12 +3,14 @@ package com.novmah.orderservice.service.impl;
 import com.novmah.basedomains.constant.AppConstant;
 import com.novmah.basedomains.dto.*;
 import com.novmah.basedomains.event.OrderEvent;
+import com.novmah.basedomains.status.OrderItemStatus;
+import com.novmah.basedomains.status.Status;
 import com.novmah.orderservice.domain.Order;
 import com.novmah.orderservice.domain.OrderItem;
 import com.novmah.orderservice.exception.ResourceNotFoundException;
+import com.novmah.orderservice.mapper.OrderItemMapper;
 import com.novmah.orderservice.mapper.OrderMapper;
 import com.novmah.orderservice.producer.OrderProducer;
-import com.novmah.orderservice.repository.OrderItemRepository;
 import com.novmah.orderservice.repository.OrderRepository;
 import com.novmah.orderservice.service.OrderService;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,51 +30,47 @@ import java.util.UUID;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
     private final OrderMapper mapper;
+    private final OrderItemMapper itemMapper;
     private final OrderProducer orderProducer;
     private final WebClient webClient;
 
     @Override
-    public String save(OrderDto orderDto) {
-        Order order = mapper.map(orderDto);
-        BigDecimal totalAmount = new BigDecimal("0.00");
-        for (OrderItemDto item : orderDto.getOrderItemDtoList()) {
-            totalAmount = totalAmount.add(item.getProductDto().getPrice()
-                    .multiply(new BigDecimal(item.getQuantity())));
-        }
-        order.setTotalAmount(totalAmount);
-        order.setPaymentId(UUID.randomUUID().toString());
-        orderRepository.save(order);
-        return "Order saved successfully";
-    }
-
-    @Override
     public String saveByCart(OrderDto orderDto) {
         Order order = mapper.map(orderDto);
+        List<OrderItem> orderItems = new ArrayList<>();
         Optional.ofNullable(callCartService(orderDto.getBuyerDto().getId())).ifPresent(cartItemDtoList -> {
             BigDecimal totalAmount = new BigDecimal("0.00");
             for (CartItemDto ci : callCartService(orderDto.getBuyerDto().getId())) {
                 OrderItem oi = OrderItem.builder()
-                        .order(order)
+                        .quantity(ci.getQuantity())
+                        .reviewStatus(Status.PENDING)
+                        .orderStatus(OrderItemStatus.ORDERED)
                         .productId(ci.getProductDto().getId())
-                        .quantity(ci.getQuantity()).build();
-                orderItemRepository.save(oi);
+                        .order(order).build();
+
+                ProductDto productDto = callProductService(oi.getProductId());
+                if (oi.getQuantity() > productDto.getQuantity())
+                    throw new ResourceNotFoundException("Product is not in stock, please try again later");
+                orderItems.add(oi);
                 totalAmount = totalAmount.add(ci.getProductDto().getPrice()
                         .multiply(new BigDecimal(ci.getQuantity())));
             }
             order.setTotalAmount(totalAmount);
             order.setPaymentId(UUID.randomUUID().toString());
+            order.setOrderItems(orderItems);
         });
         Order orderS = orderRepository.save(order);
-        orderDto.setPaymentDto(PaymentDto.builder()
+        OrderDto orderDtoS = mapper.map(orderS);
+        orderDtoS.setOrderItemDtoList(orderItems.stream().map(itemMapper::map).toList()); // ?
+        orderDtoS.setPaymentDto(PaymentDto.builder()
                 .id(orderS.getPaymentId())
                 .orderId(orderS.getId())
                 .isPayed(orderDto.getPaymentDto().getIsPayed())
                 .status(orderDto.getPaymentDto().getStatus()).build());
         // remote cart item and save payment
         orderProducer.sendMessage(OrderEvent.builder()
-                .orderDto(orderDto).build());
+                .orderDto(orderDtoS).build());
         return "Order saved successfully";
     }
 
@@ -137,6 +136,18 @@ public class OrderServiceImpl implements OrderService {
                     .block();
         } catch (RuntimeException e) {
             throw new ResourceNotFoundException("Error calling address service: " + e);
+        }
+    }
+
+    public ProductDto callProductService(Integer productId) {
+        try {
+            return webClient.get()
+                    .uri(AppConstant.PRODUCT_SERVICE_URL + productId)
+                    .retrieve()
+                    .bodyToMono(ProductDto.class)
+                    .block();
+        } catch (RuntimeException e) {
+            throw new ResourceNotFoundException("Error calling product service: " + e);
         }
     }
 

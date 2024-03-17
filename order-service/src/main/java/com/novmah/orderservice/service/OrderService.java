@@ -6,7 +6,6 @@ import java.util.List;
 
 public interface OrderService {
 
-    String save(OrderDto orderDto);
     String saveByCart(OrderDto orderDto);
     OrderDto findById(Integer id);
     List<OrderDto> findAll();

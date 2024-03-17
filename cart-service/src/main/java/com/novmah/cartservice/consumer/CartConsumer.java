@@ -21,7 +21,7 @@ public class CartConsumer {
             topics = "order_topics",
             groupId = "cart")
     public void consume(OrderEvent event) {
-        log.info("Buyer event received in cart service => {}", event.toString());
+        log.info("Order event received in cart service => {}", event.toString());
         for (CartItemDto cartItemDto : cartService.getCartByBuyerId(event.getOrderDto().getBuyerDto().getId())) {
             cartItemService.delete(cartItemDto.getId());
         }

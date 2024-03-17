@@ -38,7 +38,7 @@ public class Order extends AbstractMappedEntity implements Serializable {
 
     private String paymentId;
 
-    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY,cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<OrderItem> orderItems;
 
 }
