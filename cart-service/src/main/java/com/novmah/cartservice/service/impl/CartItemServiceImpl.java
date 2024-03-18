@@ -80,7 +80,7 @@ public class CartItemServiceImpl implements CartItemService {
                     .bodyToMono(BuyerDto.class)
                     .block();
         } catch (RuntimeException e) {
-            throw new ResourceNotFoundException("Error calling product service: " + e);
+            throw new ResourceNotFoundException("Error calling buyer service: " + e);
         }
     }
 
