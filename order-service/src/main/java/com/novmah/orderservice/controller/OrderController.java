@@ -16,12 +16,6 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public String save(@Valid @RequestBody OrderDto orderDto) {
-        return orderService.save(orderDto);
-    }
-
     @PostMapping("/cart")
     @ResponseStatus(HttpStatus.CREATED)
     public String saveByCart(@Valid @RequestBody OrderDto orderDto) {
